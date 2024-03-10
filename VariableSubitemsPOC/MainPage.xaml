@@ -1,0 +1,110 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local ="clr-namespace:VariableSubitemsPOC"
+             x:Class="VariableSubitemsPOC.MainPage"
+             Shell.NavBarIsVisible="{
+                Binding OnePageState, 
+                Converter={StaticResource EnumToBoolConverter}, 
+                ConverterParameter={x:Static local:OnePageState.Main}}">
+    <ContentPage.BindingContext>
+        <local:MainPageBindingContext />
+    </ContentPage.BindingContext>
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <local:EnumToBoolConverter x:Key="EnumToBoolConverter"/>
+        </ResourceDictionary>
+    </ContentPage.Resources>
+    <Grid>
+        <Grid
+            IsVisible="{
+                Binding OnePageState, 
+                Converter={StaticResource EnumToBoolConverter}, 
+                ConverterParameter={x:Static local:OnePageState.Main}}"
+            Padding="30,0" 
+            RowDefinitions="70, *">
+            <Image
+            Source="dotnet_bot.png"
+            HeightRequest="70"
+            Aspect="AspectFit"
+            VerticalOptions="Center"
+            SemanticProperties.Description="dot net bot in a race car number eight" />
+            <CollectionView 
+            Grid.Row="1"
+            ItemsSource="{Binding Days}" 
+            BackgroundColor="Azure">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Frame
+                            Padding="10"
+                            Margin="5"
+                            BorderColor="Gray"
+                            CornerRadius="10"
+                            HasShadow="True">
+                            <StackLayout>
+                                <Label 
+                                    Text="{Binding Description}" 
+                                    FontAttributes="Bold"
+                                    FontSize="Medium"
+                                    HorizontalOptions="Center" />
+                                <StackLayout>
+                                    <StackLayout 
+                                        BindableLayout.ItemsSource="{Binding TaskItems}">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate>
+                                                <Label 
+                                                Text="{Binding Description}" 
+                                                FontSize="Small" 
+                                                Margin="2,2">
+                                                    <Label.GestureRecognizers>
+                                                        <TapGestureRecognizer Command="{Binding LabelTappedCommand}"/>
+                                                    </Label.GestureRecognizers>
+                                                </Label>
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </StackLayout>
+                                </StackLayout>
+                            </StackLayout>
+                        </Frame>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+        <Grid
+            IsVisible="{
+                Binding OnePageState, 
+                Converter={StaticResource EnumToBoolConverter}, 
+                ConverterParameter={x:Static local:OnePageState.Detail}}"
+            Padding="30,0" 
+            RowDefinitions="70, *">
+
+            <Label 
+                Text="{Binding CurrentTask}" 
+                FontAttributes="Bold"
+                FontSize="Medium"
+                HorizontalOptions="Center" 
+                Margin="0,10"/>
+            <CollectionView
+                Grid.Row="1"
+                ItemsSource="{Binding CurrentTask.Details}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="10" ColumnDefinitions="Auto, *">
+                            <CheckBox
+                                Grid.Column="0"
+                                IsChecked="{Binding Done}"
+                                VerticalOptions="Center"
+                                HorizontalOptions="Center"/>
+                            <Label 
+                                Grid.Column="1" 
+                                Text="{Binding Description}" 
+                                Padding="5,0,0,0"
+                                VerticalOptions="Center"
+                                HorizontalOptions="Start" />
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+    </Grid>
+</ContentPage>
