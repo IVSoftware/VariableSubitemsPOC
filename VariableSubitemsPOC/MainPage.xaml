@@ -46,7 +46,9 @@
                                     Text="{Binding Description}" 
                                     FontAttributes="Bold"
                                     FontSize="Medium"
-                                    HorizontalOptions="Center" />
+                                    HorizontalOptions="Fill"
+                                    HorizontalTextAlignment="Start"
+                                    VerticalTextAlignment="Center"/>
                                 <StackLayout>
                                     <StackLayout 
                                         BindableLayout.ItemsSource="{Binding TaskItems}">

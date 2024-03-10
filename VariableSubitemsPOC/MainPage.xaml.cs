@@ -222,7 +222,7 @@ namespace VariableSubitemsPOC
         public ICommand LabelTappedCommand { get; private set; }
         private void OnLabelTapped(object o)
         {
-            using (var database = new SQLiteConnection(DatabasePath))
+            using (var database = new SQLiteConnection(DatabasePath, SQLiteOpenFlags.ReadOnly))
             using(DHostLoading.GetToken())
             {
                 var sql = $"select * from {nameof(DetailItem)} where {nameof(DetailItem.ParentId)} = '{Id}'";
@@ -301,7 +301,6 @@ namespace VariableSubitemsPOC
             }
         }
         bool _done = default;
-
         public override string ToString() => Description ?? string.Empty;
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {

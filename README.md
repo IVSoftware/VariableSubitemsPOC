@@ -1,76 +1,38 @@
 ## Variable Subitems POC
 
-As I understand it, your question has a UI component because the card shown in the `CollectionView` will need to accomodate a variable number of tasks. There also seems to be a question about the 'glue' that binds the tasks to the master card with the end result to look something like this. 
-
-
-[![Nested Subitems collection and variable height cards][1]][1]
-
-
-  [1]: https://i.stack.imgur.com/g76Kn.png
+As I understand it, you are displaying some daily tasks in a collection view, and want to query the database for task details based on some event (for example, tapping the task line). There are many ways to do this, but I hope to, as you say, point you in the right direction. Two things to know in advance: For **SQLite** I'm specifically using the **sqlite-pcl-net** nuget for this sample. Also, to try and limit the code I post here, you can browse or clone a full sample on [GitHub](https://github.com/IVSoftware/VariableSubitemsPOC);
 
 ___
 
-To simplify the database interactions in this broad overview, this code sample uses the **sqlite-pcl-net** package and we'll work with an in-memory database. The MainPage instantiates it and then loads up with `SubItem` tasks where the `DateTime` value falls on various days. It also listens for the Card item to have its binding context set by being added to the `CollectionView` and when that happens it calls into the view model of the individual card so that a database query can be made for tasks with a matching date.
+[Placeholder]
 
-You specifically asked about queries using `Id`, and both the `Card` and `Subitems` do have an `Id` to serve as the unique primary key.However, in testing this answer it seemed to be a better fit to make the queries based on matching _dates_ since you say you want to "list today's task notifications." 
+___
+
+In this version, there are two tables in the SQLite database, corresponding to a `TaskItem` record class for the parent item and a `DetailItem` record class for its subitems. For the task item, the data template that will host it in the xaml will attach a `TapGestureRecognizer` to the label displaying the task description, which will call the `LabelTappedCommand` in the view model. In that method, the database will be queried for detail items with a `ParentId` value equal to the `TaskItem` that has been tapped. Once the detail items are retrieved, one approach would be to use shell navigation to display the details in an entirely different view, or alternatively stay on the main page and use `OnePage` navigation to hide the task grid and show the details grid as is the case here.
 
 ```
-public partial class MainPage : ContentPage
+class TaskItem : INotifyPropertyChanged
 {
-    public MainPage()
+    public TaskItem()
     {
-        InitializeComponent();
-        BuildDemoDatabase();
+        LabelTappedCommand = new Command(OnLabelTapped);
     }
-
-    /// <summary>
-    /// An in-memory database to demonstrate ID queries.
-    /// </summary>
-    internal static SQLiteConnection Database { get; } = new SQLiteConnection(":memory:");
-
-    private void BuildDemoDatabase()
+    public ICommand LabelTappedCommand { get; private set; }
+    private void OnLabelTapped(object o)
     {
-        Database.CreateTable<Card>();
-        Database.CreateTable<SubItem>();
-        var dt = DateTime.Now;
-        Database.InsertAll(new[] 
-        {
-            new SubItem { DateTime = dt, Description = "Study Econ" },
-            new SubItem { DateTime = dt, Description = "PUBG" },
-            new SubItem { DateTime = dt, Description = "Meditate for 10 minutes" },
-        });
-        dt = dt.AddDays(1);
-        Database.InsertAll(new[]
-        {
-            new SubItem { DateTime = dt, Description = "Go for a morning run" },
-            new SubItem { DateTime = dt, Description = "Prepare breakfast" }
-        });
-        dt = dt.AddDays(1);
-        Database.InsertAll(new[]
-        { 
-            new SubItem { DateTime = dt, Description = "Call a friend" },
-            new SubItem { DateTime = dt, Description = "Sort emails" },
-            new SubItem { DateTime = dt, Description = "Plan the week ahead" },
-            new SubItem { DateTime = dt, Description = "Walk Jeremy's dog" },
-            new SubItem { DateTime = dt, Description = "Write in journal" },
-        });
-    }
+        using (var database = new SQLiteConnection(DatabasePath))
 
-    private void onBindingContextChanged(object sender, EventArgs e)
-    {
-        if(sender is View view && view.BindingContext is Card card)
+        using(DHostLoading.GetToken())
         {
-            card.RefreshCommand.Execute(null);
+            var sql = $"select * from {nameof(DetailItem)} where {nameof(DetailItem.ParentId)} = '{Id}'";
+            Details.Clear();
+            foreach (var detail in database.Query<DetailItem>(sql))
+            {
+                Details.Add(detail);
+            }
+            new OnePageStateRequestArgs(OnePageState.Detail).FireSelf(this);
         }
     }
-}
-```
-
-Where:
-
-```
-class SubItem : INotifyPropertyChanged
-{
     [PrimaryKey]
     public string Id { get; set; } = $"{Guid.NewGuid()}";
     public DateTime DateTime { get; set; }
@@ -87,38 +49,82 @@ class SubItem : INotifyPropertyChanged
         }
     }
     string _description = string.Empty;
-
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
     public event PropertyChangedEventHandler? PropertyChanged;
     public override string ToString() => Description ?? string.Empty;
+
+    public ObservableCollection<DetailItem> Details { get; } = 
+        new ObservableCollection<DetailItem>();
 }
 ```
+
 ___
 
-#### Card ViewModel
+The `DetailItem` is expecting to be hosted in a data template that has a checkbox to indicate whether the task has been completed, and when the user changes this value it will be committed to the database. A word of caution would be that having the `Done` property directly bound to the database update could be problematic when the property is changing _as a result of a query that is loading it_. In fact, the database is likely to hang. (This kind of circularity is a common issue when loading objects with persisted properties.) To prevent this, this sample uses a reference-counted semaphore that is checked out before the query is made.
 
-The `RefreshCommand` instructs the card to make a query to the database to collect sub items where the day matches.
+```
+class DetailItem : INotifyPropertyChanged
+{
+    [PrimaryKey]
+    public string Id { get; set; } = $"{Guid.NewGuid()}";
+    public string ParentId { get; set; } = $"{Guid.NewGuid()}";
+    public string Description
+    {
+        get => _description;
+        set
+        {
+            if (!Equals(_description, value))
+            {
+                _description = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+    string _description = string.Empty;
+
+    public bool Done
+    {
+        get => _done;
+        set
+        {
+            if (!Equals(_done, value))
+            {
+                _done = value;
+                OnPropertyChanged();
+                if (DHostLoading.IsZero())
+                {
+                    using (var database = new SQLiteConnection(DatabasePath))
+                    {
+                        var sql = $"update {nameof(DetailItem)} set {nameof(DetailItem.Done)} = {Done} where {nameof(Id)} = '{Id}'";
+                        database.Execute(sql);
+                    }
+                }
+            }
+        }
+    }
+    bool _done = default;
+
+    public override string ToString() => Description ?? string.Empty;
+    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+```
+
+**Main Page**
+
+In the screenshow shown, the top level collection view isn't showing `TaskItem` objects or `DetailItem` object directly. For demonstration purposes, the main view consiste of 7 `Card` objects representing today, tomorrow, and the other five days in the week to come. When the view is refreshed by some event (in this case on `Appearing`) each Card item issues a query to retrieve task items from the dictionary that occur any time during the day represented by the card.
 
 ```
 class Card : INotifyPropertyChanged
 {
     public Card(DateTime dt) : this() => DateTime = dt;
-    public Card()
-    {
-        RefreshCommand = new Command(OnRefresh);
-    }
-    public ICommand RefreshCommand { get; private set; }
-    private void OnRefresh(object o)
-    {
-        SubItems.Clear();
-        foreach (var subItem in Database.Query<SubItem>(DateTime.ToDateOnlyQuery(nameof(SubItem))))
-        {
-            SubItems.Add(subItem);
-        }
-    }
+    public Card() { }
 
     [PrimaryKey]
     public string Id { get; set; } = $"{Guid.NewGuid()}";
@@ -127,7 +133,7 @@ class Card : INotifyPropertyChanged
         DateTime.Equals(DateTime.Today.AddDays(1)) ? "Tomorrow" :
         DateTime.DayOfWeek.ToString();
 
-    public ObservableCollection<SubItem> SubItems { get; } = new ObservableCollection<SubItem>();
+    public ObservableCollection<TaskItem> TaskItems { get; } = new ObservableCollection<TaskItem>();
 
     public DateTime DateTime { get; set; }
 
@@ -136,39 +142,30 @@ class Card : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 ```
-
 ___
 
-##### Extension
-
-The database query uses this extension to extract the DateOnly component from the `DateTime` which is stored as ticks.
-
 ```
-static partial class Extensions
+public partial class MainPage : ContentPage
 {
-    public static string ToDateOnlyQuery(this DateTime date, string table) =>
-        $"SELECT * FROM {table} WHERE DateTime >= {date.Date.Ticks} AND DateTime < {date.Date.AddDays(1).Ticks}";
+    public MainPage() => InitializeComponent();
+
+    new MainPageBindingContext BindingContext =>
+        (MainPageBindingContext)base.BindingContext;
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        BindingContext.RefreshCommand.Execute(null);
+    }
 }
 ```
 
 ___
 
-Finally, the main page view model populates the `ItemSource` of the `CollectionView` with seven days' worth of cards.
-
 ```
-class MainPageBindingContext
+class MainPageBindingContext : INotifyPropertyChanged
 {
-    private async Task ExecAddDynamicSubitemsTest()
-    {
-        const int TEST_CARD_INDEX = 3;
-        for (int i = 1; i <= 4; i++)
-        {
-            await Task.Delay(1000); 
-            var newTaskDescription = $"Dynamic Task {i}";
-            Items[TEST_CARD_INDEX].SubItems.Add(new SubItem { Description = newTaskDescription });
-        }
-    }
-    public ObservableCollection<Card> Items { get; } = new ObservableCollection<Card>
+    public ObservableCollection<Card> Days { get; } = new ObservableCollection<Card>
     {
         new Card(DateTime.Today),
         new Card(DateTime.Today.AddDays(1)),
@@ -178,5 +175,119 @@ class MainPageBindingContext
         new Card(DateTime.Today.AddDays(5)),
         new Card(DateTime.Today.AddDays(6)),
     };
+
+    // <PackageReference Include="IVSoftware.Portable.Disposable" Version="1.2.0" />
+    // This is to suppress sqlite updates while the object is loading.
+    public static DisposableHost DHostLoading { get; } = new DisposableHost();
+
+    public ICommand RefreshCommand { get; private set; }
+    private void onRefresh(object o)
+    {
+        using (var database = new SQLiteConnection(DatabasePath))
+        {
+            foreach (var day in Days)
+            {
+                var sql = day.DateTime.ToDateOnlyQuery(nameof(TaskItem));
+                foreach (var taskItem in database.Query<TaskItem>(sql))
+                {
+                    day.TaskItems.Add(taskItem);
+                }
+            }
+        }
+    }
+    .
+    .
+    .
 }
+static partial class Extensions
+{
+    public static string ToDateOnlyQuery(this DateTime date, string table) =>
+        $"SELECT * FROM {table} WHERE DateTime >= {date.Date.Ticks} AND DateTime < {date.Date.AddDays(1).Ticks}";
+}
+```
+
+___
+
+**Xaml**
+
+```
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local ="clr-namespace:VariableSubitemsPOC"
+             x:Class="VariableSubitemsPOC.MainPage"
+             Shell.NavBarIsVisible="{
+                Binding OnePageState, 
+                Converter={StaticResource EnumToBoolConverter}, 
+                ConverterParameter={x:Static local:OnePageState.Main}}">
+    <ContentPage.BindingContext>
+        <local:MainPageBindingContext />
+    </ContentPage.BindingContext>
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <local:EnumToBoolConverter x:Key="EnumToBoolConverter"/>
+        </ResourceDictionary>
+    </ContentPage.Resources>
+    <Grid>
+        <Grid
+            IsVisible="{
+                Binding OnePageState, 
+                Converter={StaticResource EnumToBoolConverter}, 
+                ConverterParameter={x:Static local:OnePageState.Main}}"
+            Padding="30,0" 
+            RowDefinitions="70, *">
+            <Image
+            Source="dotnet_bot.png"
+            HeightRequest="70"
+            Aspect="AspectFit"
+            VerticalOptions="Center"
+            SemanticProperties.Description="dot net bot in a race car number eight" />
+            <CollectionView 
+            Grid.Row="1"
+            ItemsSource="{Binding Days}" 
+            BackgroundColor="Azure">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Frame
+                            Padding="10"
+                            Margin="5"
+                            BorderColor="Gray"
+                            CornerRadius="10"
+                            HasShadow="True">
+                            <StackLayout>
+                                <Label 
+                                    Text="{Binding Description}" 
+                                    FontAttributes="Bold"
+                                    FontSize="Medium"
+                                    HorizontalOptions="Fill"
+                                    HorizontalTextAlignment="Start"
+                                    VerticalTextAlignment="Center"/>
+                                <StackLayout>
+                                    <StackLayout 
+                                        BindableLayout.ItemsSource="{Binding TaskItems}">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate>
+                                                <Label 
+                                                Text="{Binding Description}" 
+                                                FontSize="Small" 
+                                                Margin="2,2">
+                                                    <Label.GestureRecognizers>
+                                                        <TapGestureRecognizer Command="{Binding LabelTappedCommand}"/>
+                                                    </Label.GestureRecognizers>
+                                                </Label>
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </StackLayout>
+                                </StackLayout>
+                            </StackLayout>
+                        </Frame>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+        .
+        .
+        .
+
+    </Grid>
+</ContentPage>
 ```
