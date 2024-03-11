@@ -46,8 +46,10 @@ namespace VariableSubitemsPOC
                 {
                     CurrentTask = taskItem;
                 }
-            };
-#if SCORCHED_EARTH
+            }; 
+// To reset, change to
+// #if !RESET_DATABASE
+#if !RESET_DATABASE 
             File.Delete(DatabasePath);
 #endif
             if (!File.Exists(DatabasePath)) 
