@@ -1,14 +1,15 @@
 ## Variable Subitems POC
 
-As I understand it, you are displaying some daily tasks in a collection view, and want to query the database for task details based on some event (for example, tapping the task line). There are many ways to do this, but I hope to, as you say, point you in the right direction. Two things to know in advance: For **SQLite** I'm specifically using the **sqlite-pcl-net** nuget for this sample. Also, to try and limit the code I post here, you can browse or clone a full sample on [GitHub](https://github.com/IVSoftware/VariableSubitemsPOC);
+As I understand it, you are displaying some daily tasks in a collection view, and want to query the database for task details based on some event (for example, tapping the task line). There are many ways to do this, but I hope to "point you in the right direction" as you said. Two things to know in advance: For **SQLite** I'm specifically using the **sqlite-pcl-net** NuGet for this sample. Also, to try and avoid this answer going even longer, I put the full code on [GitHub](https://github.com/IVSoftware/VariableSubitemsPOC) to browse or clone.
 
 ___
 
-[Placeholder]
+[![task list with details][1]][1]
 
 ___
 
 In this version, there are two tables in the SQLite database, corresponding to a `TaskItem` record class for the parent item and a `DetailItem` record class for its subitems. For the task item, the data template that will host it in the xaml will attach a `TapGestureRecognizer` to the label displaying the task description, which will call the `LabelTappedCommand` in the view model. In that method, the database will be queried for detail items with a `ParentId` value equal to the `TaskItem` that has been tapped. Once the detail items are retrieved, one approach would be to use shell navigation to display the details in an entirely different view, or alternatively stay on the main page and use `OnePage` navigation to hide the task grid and show the details grid as is the case here.
+___
 
 ```
 class TaskItem : INotifyPropertyChanged
@@ -115,10 +116,11 @@ class DetailItem : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 ```
+___
 
 **Main Page**
 
-In the screenshow shown, the top level collection view isn't showing `TaskItem` objects or `DetailItem` object directly. For demonstration purposes, the main view consiste of 7 `Card` objects representing today, tomorrow, and the other five days in the week to come. When the view is refreshed by some event (in this case on `Appearing`) each Card item issues a query to retrieve task items from the dictionary that occur any time during the day represented by the card.
+In the screenshot shown above, the top level collection view isn't showing `TaskItem` or `DetailItem` objects directly. For demonstration purposes, the main view consists of seven `Card` objects representing today, tomorrow, and the other five days in the week to come. 
 
 ```
 class Card : INotifyPropertyChanged
@@ -143,7 +145,7 @@ class Card : INotifyPropertyChanged
 }
 ```
 ___
-
+The view can be refreshed by executing the `RefreshCommand` in the main view model, and (for example) it is always invoked in response to the `Appearing`) event.
 ```
 public partial class MainPage : ContentPage
 {
@@ -161,6 +163,7 @@ public partial class MainPage : ContentPage
 ```
 
 ___
+The main page is one-time populated with a list of seven cards, and when refreshed this list is iterated. A query is made on each card for tasks with matching day, and these are added to the `TaskItems` collection of the card. 
 
 ```
 class MainPageBindingContext : INotifyPropertyChanged
@@ -207,6 +210,8 @@ static partial class Extensions
 ```
 
 ___
+
+The xaml features a responsive layout that varies the height of the cards depending on the number of tasks present in the day.
 
 **Xaml**
 
@@ -291,3 +296,6 @@ ___
     </Grid>
 </ContentPage>
 ```
+
+
+  [1]: https://i.stack.imgur.com/uaa5T.png
