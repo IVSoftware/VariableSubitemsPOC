@@ -49,7 +49,7 @@ namespace VariableSubitemsPOC
             }; 
 // To reset, change to
 // #if !RESET_DATABASE
-#if !RESET_DATABASE 
+#if RESET_DATABASE 
             File.Delete(DatabasePath);
 #endif
             if (!File.Exists(DatabasePath)) 
@@ -117,7 +117,7 @@ namespace VariableSubitemsPOC
             {
                 await Task.Delay(1000); 
                 var newTaskDescription = $"Dynamic Task {i}";
-                Items[TEST_CARD_INDEX].SubItems.Add(new TaskItem { Description = newTaskDescription });
+                Items[TEST_CARD_INDEX].TaskItems.Add(new TaskItem { Description = newTaskDescription });
             }
         }
 #endif
@@ -267,7 +267,7 @@ namespace VariableSubitemsPOC
     {
         [PrimaryKey]
         public string Id { get; set; } = $"{Guid.NewGuid()}";
-        public string ParentId { get; set; } = $"{Guid.NewGuid()}";
+        public string? ParentId { get; set; }
         public string Description
         {
             get => _description;
